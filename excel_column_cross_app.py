@@ -140,3 +140,4 @@ st.markdown(
     "Logic: For each selected column in File 1 and each selected column in File 2, "
     "every value in the File 1 column is paired with every value in the File 2 column. "
     "All such pairs are stacked into a **single list**."
+)
