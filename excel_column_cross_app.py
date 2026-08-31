@@ -86,7 +86,7 @@ if file1 and file2:
                 st.write(f"**Result:** {cross_df.shape[0]} rows × {cross_df.shape[1]} columns")
 
                 with st.expander("Preview Result"):
-                    st.dataframe(cross_df.head())
+                    st.dataframe(cross_df)
 
                 # Download options
                 st.subheader("Download")
