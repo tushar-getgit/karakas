@@ -37,9 +37,6 @@ if not excel_files:
     )
     st.stop()
 
-st.write(f"Found Excel files in '{EXCEL_FOLDER}':")
-st.json(excel_files)
-
 # ----------------------------
 # Helper: get sheet names for a file
 # ----------------------------
@@ -106,8 +103,6 @@ df1 = pd.read_excel(path1, sheet_name=sheet1)
 df2 = pd.read_excel(path2, sheet_name=sheet2)
 
 st.success("Sheets loaded successfully!")
-st.write(f"**Sheet 1** (`{file1}` → `{sheet1}`): {df1.shape[0]} rows × {df1.shape[1]} columns")
-st.write(f"**Sheet 2** (`{file2}` → `{sheet2}`): {df2.shape[0]} rows × {df2.shape[1]} columns")
 
 with st.expander("Preview Sheet 1"):
     st.dataframe(df1, use_container_width=True)
@@ -126,7 +121,7 @@ mode = st.radio(
     "Cross mode",
     ["All columns from Sheet 1 × All columns from Sheet 2",
      "Select specific columns from each sheet"],
-    index=0
+    index=1  # default to "Select specific columns from each sheet"
 )
 
 if mode == "All columns from Sheet 1 × All columns from Sheet 2":
@@ -148,11 +143,6 @@ if not selected_cols1 or not selected_cols2:
     st.warning("Please select at least one column from each sheet.")
     st.stop()
 
-st.write(
-    f"Will cross: {selected_cols1} (Sheet 1) with {selected_cols2} (Sheet 2) "
-    "into a single list."
-)
-
 # ----------------------------
 # Build cross product as a SINGLE list
 # ----------------------------
@@ -169,12 +159,6 @@ for c1 in selected_cols1:
         pairs = pd.DataFrame({
             "value_sheet1": vals1 * len(vals2),
             "value_sheet2": [v for v in vals2 for _ in vals1],
-            "source_col_sheet1": c1,
-            "source_col_sheet2": c2,
-            "source_file_sheet1": file1,
-            "source_file_sheet2": file2,
-            "source_sheet1": sheet1,
-            "source_sheet2": sheet2,
         })
 
         result_parts.append(pairs)
