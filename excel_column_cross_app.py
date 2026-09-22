@@ -2,12 +2,13 @@ import streamlit as st
 import pandas as pd
 import io
 import os
+import random
 
 st.set_page_config(page_title="Excel Column Cross (From Repo)", layout="wide")
 st.title("Excel Column Cross Product (From Repo)")
 st.markdown(
     "This app reads Excel files **from the same Git repository** as the code. "
-    "Select two sheets (from any of the Excel files in the repo) and generate a cross product."
+    "Select sheets from the Excel files and generate a cross product."
 )
 
 # ----------------------------
@@ -47,121 +48,136 @@ def get_sheet_names(filename: str):
     return xls.sheet_names
 
 # ----------------------------
-# UI: select two sheets using selectors (radio-like)
+# UI: select sheets using selectors (one radio per sheet slot)
 # ----------------------------
-st.subheader("Select two sheets to cross")
+st.subheader("Select sheets to cross")
 
-# --- Sheet 1 selection ---
-st.markdown("### Sheet 1")
-file1 = st.selectbox("Select Excel file for Sheet 1", excel_files, index=0 if excel_files else None)
+# We'll support selecting multiple sheets from the same or different files.
+# To keep it simple and flexible, we let the user pick:
+# - For each "slot" (Sheet A, Sheet B, Sheet C, ...), choose a file and then a sheet from that file.
+# The number of slots is fixed to 3 for now (as per your requirement: cross will happen for 3 sheets).
 
-if file1:
-    sheet_names1 = get_sheet_names(file1)
-    if not sheet_names1:
-        st.warning(f"No sheets found in '{file1}'.")
-        sheet1 = None
+NUM_SHEETS_TO_CROSS = 3
+
+selected_files = []
+selected_sheets = []
+
+for i in range(NUM_SHEETS_TO_CROSS):
+    st.markdown(f"### Sheet {i+1}")
+    
+    file_sel = st.selectbox(
+        f"Select Excel file for Sheet {i+1}",
+        excel_files,
+        index=min(i, len(excel_files)-1) if excel_files else None,
+        key=f"file_slot_{i}"
+    )
+    
+    if file_sel:
+        sheet_names = get_sheet_names(file_sel)
+        if not sheet_names:
+            st.warning(f"No sheets found in '{file_sel}'.")
+            sheet_sel = None
+        else:
+            # Show one radio option per sheet (number of options = number of sheets in file)
+            sheet_sel = st.radio(
+                f"Select Sheet {i+1}",
+                sheet_names,
+                index=0,
+                key=f"sheet_slot_{i}_radio"
+            )
     else:
-        sheet1 = st.radio(
-            "Select Sheet 1",
-            sheet_names1,
-            index=0,
-            key="sheet1_radio"
-        )
-else:
-    sheet1 = None
+        sheet_sel = None
+    
+    selected_files.append(file_sel)
+    selected_sheets.append(sheet_sel)
 
-# --- Sheet 2 selection ---
-st.markdown("### Sheet 2")
-file2 = st.selectbox("Select Excel file for Sheet 2", excel_files, index=min(1, len(excel_files)-1) if excel_files else None)
-
-if file2:
-    sheet_names2 = get_sheet_names(file2)
-    if not sheet_names2:
-        st.warning(f"No sheets found in '{file2}'.")
-        sheet2 = None
-    else:
-        sheet2 = st.radio(
-            "Select Sheet 2",
-            sheet_names2,
-            index=0,
-            key="sheet2_radio"
-        )
-else:
-    sheet2 = None
-
-if not file1 or not sheet1 or not file2 or not sheet2:
-    st.warning("Please select both files and sheets.")
+if None in selected_files or None in selected_sheets:
+    st.warning("Please select a file and sheet for all slots.")
     st.stop()
 
 # ----------------------------
 # Load selected sheets
 # ----------------------------
-path1 = os.path.join(EXCEL_FOLDER, file1)
-path2 = os.path.join(EXCEL_FOLDER, file2)
-
-df1 = pd.read_excel(path1, sheet_name=sheet1)
-df2 = pd.read_excel(path2, sheet_name=sheet2)
+dfs = []
+for path_file, sheet_name in zip(selected_files, selected_sheets):
+    path = os.path.join(EXCEL_FOLDER, path_file)
+    df = pd.read_excel(path, sheet_name=sheet_name)
+    dfs.append(df)
 
 st.success("Sheets loaded successfully!")
 
-with st.expander("Preview Sheet 1"):
-    st.dataframe(df1, use_container_width=True)
-with st.expander("Preview Sheet 2"):
-    st.dataframe(df2, use_container_width=True)
+for i, (df, file_name, sheet_name) in enumerate(zip(dfs, selected_files, selected_sheets)):
+    with st.expander(f"Preview Sheet {i+1}"):
+        st.dataframe(df, use_container_width=True)
 
 # ----------------------------
 # Column selection
 # ----------------------------
 st.subheader("Select columns to cross")
 
-cols1 = df1.columns.tolist()
-cols2 = df2.columns.tolist()
+all_cols = [df.columns.tolist() for df in dfs]
 
 mode = st.radio(
     "Cross mode",
-    ["All columns from Sheet 1 × All columns from Sheet 2",
+    ["All columns from all sheets",
      "Select specific columns from each sheet"],
     index=1  # default to "Select specific columns from each sheet"
 )
 
-if mode == "All columns from Sheet 1 × All columns from Sheet 2":
-    selected_cols1 = cols1
-    selected_cols2 = cols2
+if mode == "All columns from all sheets":
+    selected_cols_list = all_cols
 else:
-    selected_cols1 = st.multiselect(
-        "Columns from Sheet 1",
-        cols1,
-        default=cols1[:1] if cols1 else []
-    )
-    selected_cols2 = st.multiselect(
-        "Columns from Sheet 2",
-        cols2,
-        default=cols2[:1] if cols2 else []
-    )
+    selected_cols_list = []
+    for i, cols in enumerate(all_cols):
+        sel = st.multiselect(
+            f"Columns from Sheet {i+1}",
+            cols,
+            default=cols[:1] if cols else [],
+            key=f"col_select_{i}"
+        )
+        selected_cols_list.append(sel)
 
-if not selected_cols1 or not selected_cols2:
+if any(len(sel) == 0 for sel in selected_cols_list):
     st.warning("Please select at least one column from each sheet.")
     st.stop()
 
 # ----------------------------
-# Build cross product as a SINGLE list
+# Build cross product as a SINGLE list across 3 sheets
 # ----------------------------
+# For each combination of selected columns (one from each sheet),
+# create all value combinations and stack them.
+
 result_parts = []
 
-for c1 in selected_cols1:
-    for c2 in selected_cols2:
-        vals1 = df1[c1].dropna().tolist()
-        vals2 = df2[c2].dropna().tolist()
+# Iterate over all combinations of selected columns across the sheets
+import itertools
 
-        if len(vals1) == 0 or len(vals2) == 0:
-            continue
+col_combinations = list(itertools.product(*selected_cols_list))
 
-        pairs = pd.DataFrame({
-            "value_sheet1": vals1 * len(vals2),
-            "value_sheet2": [v for v in vals2 for _ in vals1],
-        })
-
-        result_parts.append(pairs)
+for col_combo in col_combinations:
+    # col_combo is a tuple like (col1_from_sheet1, col2_from_sheet2, col3_from_sheet3)
+    vals_list = [
+        dfs[i][col].dropna().tolist()
+        for i, col in enumerate(col_combo)
+    ]
+    
+    # Skip if any column is empty
+    if any(len(v) == 0 for v in vals_list):
+        continue
+    
+    # Create all combinations of values across the sheets
+    all_value_combos = list(itertools.product(*vals_list))
+    
+    # Shuffle to show results in random order
+    random.shuffle(all_value_combos)
+    
+    # Build DataFrame
+    pairs = pd.DataFrame(
+        all_value_combos,
+        columns=[f"value_sheet{i+1}" for i in range(NUM_SHEETS_TO_CROSS)]
+    )
+    
+    result_parts.append(pairs)
 
 if not result_parts:
     st.error("No valid data to cross after dropping missing values.")
@@ -169,7 +185,10 @@ if not result_parts:
 
 cross_df = pd.concat(result_parts, ignore_index=True)
 
-st.write(f"**Result (single list):** {cross_df.shape[0]} rows × {cross_df.shape[1]} columns")
+# Shuffle again at the final level for extra randomness (optional)
+cross_df = cross_df.sample(frac=1, random_state=42).reset_index(drop=True)
+
+st.write(f"**Result (single list, random order):** {cross_df.shape[0]} rows × {cross_df.shape[1]} columns")
 
 # Show full result on screen (all data visible)
 st.subheader("Result (full data visible)")
@@ -194,7 +213,6 @@ st.download_button(
 
 st.markdown("---")
 st.markdown(
-    "Logic: For each selected column in Sheet 1 and each selected column in Sheet 2, "
-    "every value in the Sheet 1 column is paired with every value in the Sheet 2 column. "
-    "All such pairs are stacked into a **single list**."
+    "Logic: For each selected column combination across the 3 sheets, "
+    "every value combination is generated and all such rows are stacked into a **single list** in random order."
 )
