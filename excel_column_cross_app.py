@@ -13,8 +13,7 @@ st.markdown(
 # ----------------------------
 # CONFIG: folder where Excel files are stored (relative to this script)
 # ----------------------------
-# Change this if your Excel files are in a different folder.
-EXCEL_FOLDER = "."  # current directory; or e.g. "data"
+EXCEL_FOLDER = "."  # e.g. "." or "data" or "files"
 
 # ----------------------------
 # Discover Excel files in repo
@@ -51,19 +50,47 @@ def get_sheet_names(filename: str):
     return xls.sheet_names
 
 # ----------------------------
-# UI: select two sheets (from possibly different files)
+# UI: select two sheets using selectors (radio-like)
 # ----------------------------
 st.subheader("Select two sheets to cross")
 
-# File + sheet selection for first sheet
+# --- Sheet 1 selection ---
+st.markdown("### Sheet 1")
 file1 = st.selectbox("Select Excel file for Sheet 1", excel_files, index=0 if excel_files else None)
-sheet_names1 = get_sheet_names(file1) if file1 else []
-sheet1 = st.selectbox("Select Sheet 1", sheet_names1, index=0 if sheet_names1 else None)
 
-# File + sheet selection for second sheet
+if file1:
+    sheet_names1 = get_sheet_names(file1)
+    if not sheet_names1:
+        st.warning(f"No sheets found in '{file1}'.")
+        sheet1 = None
+    else:
+        sheet1 = st.radio(
+            "Select Sheet 1",
+            sheet_names1,
+            index=0,
+            key="sheet1_radio"
+        )
+else:
+    sheet1 = None
+
+# --- Sheet 2 selection ---
+st.markdown("### Sheet 2")
 file2 = st.selectbox("Select Excel file for Sheet 2", excel_files, index=min(1, len(excel_files)-1) if excel_files else None)
-sheet_names2 = get_sheet_names(file2) if file2 else []
-sheet2 = st.selectbox("Select Sheet 2", sheet_names2, index=0 if sheet_names2 else None)
+
+if file2:
+    sheet_names2 = get_sheet_names(file2)
+    if not sheet_names2:
+        st.warning(f"No sheets found in '{file2}'.")
+        sheet2 = None
+    else:
+        sheet2 = st.radio(
+            "Select Sheet 2",
+            sheet_names2,
+            index=0,
+            key="sheet2_radio"
+        )
+else:
+    sheet2 = None
 
 if not file1 or not sheet1 or not file2 or not sheet2:
     st.warning("Please select both files and sheets.")
@@ -83,9 +110,9 @@ st.write(f"**Sheet 1** (`{file1}` → `{sheet1}`): {df1.shape[0]} rows × {df1.s
 st.write(f"**Sheet 2** (`{file2}` → `{sheet2}`): {df2.shape[0]} rows × {df2.shape[1]} columns")
 
 with st.expander("Preview Sheet 1"):
-    st.dataframe(df1)
+    st.dataframe(df1, use_container_width=True)
 with st.expander("Preview Sheet 2"):
-    st.dataframe(df2)
+    st.dataframe(df2, use_container_width=True)
 
 # ----------------------------
 # Column selection
